@@ -2,11 +2,15 @@ module Lib
     ( 
         day1,
         day2, 
-        day3
+        day3,
+        day4
     ) where
 
 import Control.Monad
+import Data.Functor.Identity
 import Data.Maybe
+import Data.Either
+import qualified Data.List as List 
 import qualified Text.Parsec.Numbers as PN 
 import qualified Text.Parsec.Char as PC
 import qualified Text.Parsec as PT
@@ -117,3 +121,152 @@ day3 = do
         print $ head res 
         print res 
         print $ product $ mapMaybe (id) res
+
+packPassport stuff = 
+                let 
+                    (start, end) = break (\x -> x=="" || x == "\r") stuff
+                    list = words $ List.intercalate " " start 
+                in 
+                    if end == [] then 
+                        [list]
+                    else 
+                        list:packPassport (tail end)
+
+parseYear :: PT.ParsecT [Char] st Identity Int
+parseYear = do 
+            yearstr <- PT.count 4 PT.digit
+            let year = read yearstr
+            return year 
+
+data Units = Inches Int | CM Int deriving Show
+
+data EYE = AMB | BLU | BRN | GRY | GRN | HZL | OTH deriving Show 
+data Field = BYR Int | IYR Int | EYR Int | HGT Units | CLR String | ECL EYE | PID String | CID deriving Show
+
+colon :: PT.ParsecT [Char] st Identity Char
+colon=PC.char ':'
+
+parseBirthYear = do 
+                    PT.try $ mapM PC.char "byr"
+                    colon 
+                    year <- parseYear 
+                    guard (year >= 1920)
+                    guard (year <= 2002)
+                    return $ Map.singleton "byr" (BYR year)
+
+
+parseIssueYear = do 
+                    PT.try $ mapM PC.char "iyr"
+                    colon
+                    year <- parseYear 
+                    guard (year >= 2010)
+                    guard (year <= 2020)
+                    return $ Map.singleton "iyr" (IYR year)
+
+parseExpirationYear = do 
+                        PT.try $ mapM PC.char "eyr"
+                        colon
+                        year <- parseYear
+                        guard (year >= 2020)
+                        guard (year <= 2030)
+                        return $ Map.singleton "eyr" (EYR year)
+
+
+
+
+parseCM = do 
+            val <- PN.parseIntegral 
+            mapM PC.char "cm"
+            guard (val >= 150)
+            guard (val <= 193)
+            return (CM val)
+
+
+parseInches = do 
+            val <- PN.parseIntegral 
+            mapM PC.char "in"
+            guard (val >= 59)
+            guard (val <= 76)
+            return (Inches val)
+
+
+parseHeight = do 
+                PT.try $ mapM PC.char "hgt"
+                colon
+                hgt <- PT.choice [PT.try $ parseCM,PT.try $ parseInches]
+                return $ Map.singleton "hgt" (HGT hgt) 
+
+parseHairColor = do 
+                PT.try $ mapM PC.char "hcl"
+                colon
+                PC.char '#'
+                digits <- PT.count 6 PC.hexDigit
+                return $ Map.singleton "hcl" (CLR digits)
+
+eyeparse :: (String,EYE) -> PT.ParsecT [Char] st Identity EYE
+eyeparse (str,val) = do 
+                    PT.try $ mapM PC.char str 
+                    return val 
+
+eyes = [("amb",AMB),("blu",BLU),("brn",BRN),("gry",GRY),("grn",GRN),("hzl",HZL),("oth",OTH)]
+
+parseEyeColor = do 
+                PT.try $ mapM PC.char "ecl"
+                colon
+                eyeclr <- PT.choice $ map eyeparse eyes
+                return $ Map.singleton "ecl" (ECL eyeclr)
+
+parsePassport = do 
+                PT.try $ mapM PC.char "pid"
+                colon 
+                number <- PT.count 9 PC.digit
+                return $ Map.singleton "pid" (PID number)
+
+parseCountry = do 
+                PT.try $ mapM PC.char "cid"
+                colon 
+                PT.many PC.digit
+                return $ Map.singleton "cid" (CID)
+
+
+parseField = do 
+            x <- PT.choice [parseBirthYear,parseIssueYear,parseExpirationYear,parseHeight,parseHairColor,parseEyeColor,parsePassport,parseCountry]
+            PT.eof
+            return x 
+                    
+ 
+validatePassport  :: [String] -> Bool
+validatePassport fields = let 
+                             list = map (\x -> takeWhile (/=':') x) fields
+                             len = length list
+                            in 
+                                if len == 8 then 
+                                    True 
+                                else 
+                                   notElem "cid" list && len == 7 
+
+
+                                    
+validateBetter :: [String] -> IO Bool
+validateBetter fields = let 
+                            parseres  = map (\x -> PT.parse parseField x x) fields
+                            parsesuc = rights parseres
+
+                            total = Map.unions parsesuc
+                            keylist = Map.keys total
+                            keylength = length keylist 
+                        in do 
+                            print $ lefts parseres
+                            return $ if keylength == 8 then 
+                                True 
+                            else 
+                                keylength == 7  && notElem "cid" keylist 
+
+day4 :: IO ()
+day4 = do 
+        file <- lines <$> readFile "inputs/inputd4.txt"
+        let passports = packPassport file 
+        print $ length $ filter (id) $ map validatePassport passports 
+        l <- mapM validateBetter passports
+        print $ length $ filter (id) l
+        return ()
