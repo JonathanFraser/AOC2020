@@ -3,13 +3,15 @@ module Lib
         day1,
         day2, 
         day3,
-        day4
+        day4,
+        day5
     ) where
 
 import Control.Monad
 import Data.Functor.Identity
 import Data.Maybe
 import Data.Either
+import Data.List 
 import qualified Data.List as List 
 import qualified Text.Parsec.Numbers as PN 
 import qualified Text.Parsec.Char as PC
@@ -270,3 +272,42 @@ day4 = do
         l <- mapM validateBetter passports
         print $ length $ filter (id) l
         return ()
+
+toPart 'F' = 0 
+toPart 'B' = 1 
+toPart 'R' = 1
+toPart 'L' = 0 
+
+
+toIndex :: String -> Int 
+toIndex idx = let 
+                mask = zip (reverse $ map toPart idx) (iterate (*2) 1)
+            in 
+                sum $ map (uncurry (*)) mask 
+
+parseRow = do 
+            row <- PT.count 7 $ PT.choice [PT.try$PC.char 'F',PT.try$PC.char 'B']
+            col <- PT.count 3 $ PT.choice [PT.try$ PC.char 'L',PT.try$ PC.char 'R']
+            return (toIndex row,toIndex col)
+
+
+
+day5 :: IO ()
+day5 = do 
+        file <- lines <$> readFile "inputs/inputd5.txt"
+        let res = mapM (PT.parse parseRow "") file
+        let ids = fmap (map (\(x,y) -> 8*x + y) ) res 
+        print $ fmap maximum ids 
+        print $ do 
+                    list <- res
+                    let (rows, cols) = unzip list 
+                    let maxrow = maximum rows 
+                    let minrow = minimum rows 
+                    let maxcol = maximum cols 
+                    let mincol = minimum cols 
+                    let trials = do 
+                                    r <- [minrow+1..maxrow-1]
+                                    c <- [mincol..maxcol]
+                                    return (r,c)
+                    let (row,col) = head (trials \\ list)
+                    return (8*row + col)
