@@ -4,7 +4,8 @@ module Lib
         day2, 
         day3,
         day4,
-        day5
+        day5,
+        day6
     ) where
 
 import Control.Monad
@@ -12,6 +13,7 @@ import Data.Functor.Identity
 import Data.Maybe
 import Data.Either
 import Data.List 
+import qualified Data.Set as Set 
 import qualified Data.List as List 
 import qualified Text.Parsec.Numbers as PN 
 import qualified Text.Parsec.Char as PC
@@ -311,3 +313,19 @@ day5 = do
                                     return (r,c)
                     let (row,col) = head (trials \\ list)
                     return (8*row + col)
+
+
+toAnyoneCount :: [String] -> Int
+toAnyoneCount lst = Set.size $ foldr (Set.union) Set.empty $ map Set.fromList lst 
+
+
+toEveryoneCount :: [String] -> Int 
+toEveryoneCount lst = let 
+                        (x:xs) = map Set.fromList lst
+                        in 
+                        Set.size $ foldr Set.intersection x xs 
+
+day6 = do 
+        r <- packPassport <$> lines <$> readFile "inputs/inputd6.txt" 
+        print $ sum $ map toAnyoneCount r
+        print $ sum $ map toEveryoneCount r 
