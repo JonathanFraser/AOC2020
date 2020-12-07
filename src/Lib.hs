@@ -5,7 +5,8 @@ module Lib
         day3,
         day4,
         day5,
-        day6
+        day6,
+        day7
     ) where
 
 import Control.Monad
@@ -329,3 +330,95 @@ day6 = do
         r <- packPassport <$> lines <$> readFile "inputs/inputd6.txt" 
         print $ sum $ map toAnyoneCount r
         print $ sum $ map toEveryoneCount r 
+
+
+
+descriptor = PT.many PC.letter 
+color = PT.many PC.letter
+
+
+bag = do 
+        desc <- descriptor
+        PC.space 
+        col <- color
+        PC.space
+        PC.string "bag"
+        PT.optional $ PC.char 's'
+        return (desc,col) 
+
+child :: PT.ParsecT [Char] st Identity (([Char], [Char]),Int)
+child = do 
+            cnt <- PN.parseIntegral
+            PC.space
+            bg <- bag
+            return (bg,cnt)
+
+eol = do 
+        PC.string "no other bags"
+        return []
+
+line = do 
+        wrapper <- bag
+        PC.space
+        PC.string "contain"
+        PC.space
+        chld <- PT.choice [PT.try $ eol,PT.sepBy1 child (PC.string ", ")]
+        PT.char '.'
+        return (wrapper,Map.fromList chld)
+
+
+graph = PT.many $ do 
+                    l <- line 
+                    PC.endOfLine
+                    return l
+
+
+tgtbag :: ([Char], [Char])
+tgtbag = ("shiny","gold")
+
+
+canhold :: Ord k => k -> [(b, Map.Map k a)] -> [b]
+canhold tgt lst = do 
+                (container,children) <- lst
+                if Map.member tgt children then 
+                    return container 
+                else 
+                    []
+
+
+canholdtree tgt lst current = let 
+                                immediate = canhold tgt lst
+                                remainder = filter (\x -> not $ Set.member x current) immediate
+                                next = Set.union current $ Set.fromList remainder 
+                                updates = map (\x -> canholdtree x lst) remainder
+                                new = foldr (\ a b ->  a b) next updates
+                                in 
+                                    if length remainder == 0 then 
+                                        next 
+                                    else 
+                                        new 
+
+
+
+treetotal :: (Num a, Ord k) => k -> Map.Map k (Map.Map k a) -> a
+treetotal tgt tree = let 
+                        children = tree Map.! tgt
+                        cnt = sum $ map (\(x,c) -> c * (treetotal x tree)) $ Map.toList children 
+                    in             
+                        if Map.size children == 0 then 
+                            1 
+                        else 
+                            cnt+1
+                            
+
+
+day7 = do 
+        l <- readFile "inputs/inputd7.txt"
+        let parsed =  PT.parse graph "" l 
+        print $ do
+                result <- parsed 
+                return $ (Set.size $ canholdtree tgtbag result (Set.singleton tgtbag)) - 1
+        print $ do 
+                result <- parsed 
+                let resmap = (Map.fromList result)
+                return $ treetotal tgtbag resmap - 1
