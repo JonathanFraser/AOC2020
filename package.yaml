@@ -24,6 +24,7 @@ dependencies:
 - containers
 - parsec
 - ParsecTools
+- array
 
 library:
   source-dirs: src

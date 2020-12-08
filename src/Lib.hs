@@ -6,7 +6,8 @@ module Lib
         day4,
         day5,
         day6,
-        day7
+        day7,
+        day8
     ) where
 
 import Control.Monad
@@ -14,6 +15,7 @@ import Data.Functor.Identity
 import Data.Maybe
 import Data.Either
 import Data.List 
+import qualified Data.Array as Array 
 import qualified Data.Set as Set 
 import qualified Data.List as List 
 import qualified Text.Parsec.Numbers as PN 
@@ -422,3 +424,101 @@ day7 = do
                 result <- parsed 
                 let resmap = (Map.fromList result)
                 return $ treetotal tgtbag resmap - 1
+
+
+
+data Instruction = ACC Int | JMP Int | NOP Int deriving (Show,Eq)
+
+data Computer = Computer {pc :: Int, program :: Array.Array Int Instruction, acc :: Int} deriving (Show,Eq)
+
+parseAcc = do 
+            PC.string "acc"
+            PC.space 
+            n <- PN.parseIntegral
+            return $ ACC n 
+
+parseJmp = do 
+            PC.string "jmp"
+            PC.space 
+            n <- PN.parseIntegral
+            return $ JMP n
+
+parseNop = do 
+            PC.string "nop"
+            PC.space 
+            n <- PN.parseIntegral
+            return $ NOP n 
+
+parseInstruction = do
+                    inst <- PT.choice $ map PT.try [parseAcc,parseJmp,parseNop]
+                    PC.endOfLine
+                    return inst
+
+parseProgram = do 
+                intrs <- PT.many parseInstruction 
+                return $ Computer {
+                    pc = 0,
+                    acc = 0, 
+                    program = Array.listArray (0,(length intrs)-1) intrs
+                }
+
+liftParse :: (Show a) => Either a b -> IO b 
+liftParse (Left a) = fail $ (show a)
+liftParse (Right b) = return b
+
+
+apply (NOP _) x = x {pc=succ (pc x)}
+apply (ACC ac) x = x {pc = succ(pc x), acc = (acc x) + ac}
+apply (JMP jm) x = x {pc = (pc x) + jm}
+
+step :: Computer -> Computer
+step x = let
+            prg = program x
+            cnt = pc x 
+            instr = prg Array.! cnt 
+        in 
+            apply instr x 
+
+isHalt :: Computer -> Bool 
+isHalt x = let 
+            prg = program x 
+            cnt = pc x 
+            (_,l) = Array.bounds prg
+            in 
+                cnt == l
+ 
+
+chkhalts :: Computer -> Set.Set Int -> Either Computer Computer
+chkhalts x visited | isHalt x = Right x
+chkhalts x visited = let 
+                        xp = step x 
+                        newvisited = Set.insert (pc x) visited
+                     in 
+                        if Set.member (pc xp) visited then 
+                             Left x 
+                        else 
+                            chkhalts xp newvisited
+
+
+cnginstr i x = let 
+             instr = program x Array.! i
+             newinstr = case instr of 
+                            ACC n -> ACC n 
+                            JMP n -> NOP n 
+                            NOP n -> JMP n 
+             newprog = (program x) Array.// [(i,newinstr)]
+             in 
+                 x {program = newprog}
+
+
+
+day8 = do 
+        lns <- readFile "inputs/inputd8.txt"
+        prg <- liftParse $ PT.parse parseProgram "" lns
+        print $ chkhalts prg Set.empty
+        let res = map (\x -> chkhalts x Set.empty) $ map (\i -> cnginstr i prg) $ Array.indices $ program prg
+        print $ do 
+                 x <- res 
+                 case x of 
+                     Left x -> []
+                     Right x -> [x]
