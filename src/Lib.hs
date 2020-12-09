@@ -7,7 +7,8 @@ module Lib
         day5,
         day6,
         day7,
-        day8
+        day8,
+        day9
     ) where
 
 import Control.Monad
@@ -515,10 +516,43 @@ cnginstr i x = let
 day8 = do 
         lns <- readFile "inputs/inputd8.txt"
         prg <- liftParse $ PT.parse parseProgram "" lns
-        print $ chkhalts prg Set.empty
+        print $ case chkhalts prg Set.empty of 
+                    Left x -> acc x 
+                    Right x -> acc x 
+
         let res = map (\x -> chkhalts x Set.empty) $ map (\i -> cnginstr i prg) $ Array.indices $ program prg
-        print $ do 
-                 x <- res 
-                 case x of 
-                     Left x -> []
-                     Right x -> [x]
+        let lst = do 
+                    x <- res 
+                    case x of 
+                        Left x -> []
+                        Right x -> [x]
+        print $ map acc lst
+
+
+
+hassum :: [Int] -> Int -> Bool 
+hassum [] _ = False 
+hassum (x:xs) n | (List.elem (n-x) xs) = True 
+hassum (_:xs) n  = hassum xs n 
+
+checklist :: [Int] -> [Int] -> Int -> (Int,Int)
+checklist (x:xs) seen i | hassum seen x = let 
+                                            newseen = (tail seen) ++ [x]
+                                            in checklist xs newseen (i+1)
+
+checklist (x:xs) seen i = (x,i) 
+
+day9 = do 
+        its <- readInts "inputs/inputd9.txt"
+        print $ take 25 its 
+        let (num,idx) =  checklist (drop 25 its) (take 25 its) 25
+        print num 
+        let f = do 
+                    start <- [0..(length its)-1]
+                    let remainder = (length its) - start 
+                    remlen <- [2..remainder]
+                    let prefix = drop start its 
+                    let rest = take remlen prefix
+                    guard (sum rest == num)
+                    return (maximum rest + minimum rest) 
+        print f 
