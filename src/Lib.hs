@@ -155,7 +155,7 @@ colon :: PT.ParsecT [Char] st Identity Char
 colon=PC.char ':'
 
 parseBirthYear = do 
-                    PT.try $ mapM PC.char "byr"
+                    PT.try $ PC.string "byr"
                     colon 
                     year <- parseYear 
                     guard (year >= 1920)
@@ -164,7 +164,7 @@ parseBirthYear = do
 
 
 parseIssueYear = do 
-                    PT.try $ mapM PC.char "iyr"
+                    PT.try $ PC.string "iyr"
                     colon
                     year <- parseYear 
                     guard (year >= 2010)
@@ -172,7 +172,7 @@ parseIssueYear = do
                     return $ Map.singleton "iyr" (IYR year)
 
 parseExpirationYear = do 
-                        PT.try $ mapM PC.char "eyr"
+                        PT.try $ PC.string "eyr"
                         colon
                         year <- parseYear
                         guard (year >= 2020)
@@ -184,7 +184,7 @@ parseExpirationYear = do
 
 parseCM = do 
             val <- PN.parseIntegral 
-            mapM PC.char "cm"
+            PC.string "cm"
             guard (val >= 150)
             guard (val <= 193)
             return (CM val)
@@ -192,20 +192,20 @@ parseCM = do
 
 parseInches = do 
             val <- PN.parseIntegral 
-            mapM PC.char "in"
+            PC.string "in"
             guard (val >= 59)
             guard (val <= 76)
             return (Inches val)
 
 
 parseHeight = do 
-                PT.try $ mapM PC.char "hgt"
+                PT.try $ PC.string "hgt"
                 colon
                 hgt <- PT.choice [PT.try $ parseCM,PT.try $ parseInches]
                 return $ Map.singleton "hgt" (HGT hgt) 
 
 parseHairColor = do 
-                PT.try $ mapM PC.char "hcl"
+                PT.try $ PC.string "hcl"
                 colon
                 PC.char '#'
                 digits <- PT.count 6 PC.hexDigit
@@ -213,25 +213,25 @@ parseHairColor = do
 
 eyeparse :: (String,EYE) -> PT.ParsecT [Char] st Identity EYE
 eyeparse (str,val) = do 
-                    PT.try $ mapM PC.char str 
+                    PT.try $ PC.string str 
                     return val 
 
 eyes = [("amb",AMB),("blu",BLU),("brn",BRN),("gry",GRY),("grn",GRN),("hzl",HZL),("oth",OTH)]
 
 parseEyeColor = do 
-                PT.try $ mapM PC.char "ecl"
+                PT.try $ PC.string "ecl"
                 colon
                 eyeclr <- PT.choice $ map eyeparse eyes
                 return $ Map.singleton "ecl" (ECL eyeclr)
 
 parsePassport = do 
-                PT.try $ mapM PC.char "pid"
+                PT.try $ PC.string "pid"
                 colon 
                 number <- PT.count 9 PC.digit
                 return $ Map.singleton "pid" (PID number)
 
 parseCountry = do 
-                PT.try $ mapM PC.char "cid"
+                PT.try $ PC.string "cid"
                 colon 
                 PT.many PC.digit
                 return $ Map.singleton "cid" (CID)
@@ -468,6 +468,7 @@ liftParse (Left a) = fail $ (show a)
 liftParse (Right b) = return b
 
 
+apply :: Instruction -> Computer -> Computer
 apply (NOP _) x = x {pc=succ (pc x)}
 apply (ACC ac) x = x {pc = succ(pc x), acc = (acc x) + ac}
 apply (JMP jm) x = x {pc = (pc x) + jm}
@@ -501,6 +502,7 @@ chkhalts x visited = let
                             chkhalts xp newvisited
 
 
+cnginstr :: Int -> Computer -> Computer
 cnginstr i x = let 
              instr = program x Array.! i
              newinstr = case instr of 
@@ -513,6 +515,7 @@ cnginstr i x = let
 
 
 
+day8 :: IO ()
 day8 = do 
         lns <- readFile "inputs/inputd8.txt"
         prg <- liftParse $ PT.parse parseProgram "" lns
@@ -520,7 +523,7 @@ day8 = do
                     Left x -> acc x 
                     Right x -> acc x 
 
-        let res = map (\x -> chkhalts x Set.empty) $ map (\i -> cnginstr i prg) $ Array.indices $ program prg
+        let res = map ((`chkhalts` Set.empty).(`cnginstr` prg)) $ Array.indices $ program prg
         let lst = do 
                     x <- res 
                     case x of 
@@ -532,27 +535,33 @@ day8 = do
 
 hassum :: [Int] -> Int -> Bool 
 hassum [] _ = False 
-hassum (x:xs) n | (List.elem (n-x) xs) = True 
+hassum (x:xs) n |  (n-x) `List.elem` xs = True 
 hassum (_:xs) n  = hassum xs n 
 
 checklist :: [Int] -> [Int] -> Int -> (Int,Int)
 checklist (x:xs) seen i | hassum seen x = let 
-                                            newseen = (tail seen) ++ [x]
+                                            newseen = tail seen ++ [x]
                                             in checklist xs newseen (i+1)
 
-checklist (x:xs) seen i = (x,i) 
+checklist (x:_) _ i = (x,i) 
 
+setsum :: (Eq a, Num a) => [a] -> a -> [[a]]
+setsum lst tgt = do 
+                    start <- [0..(length lst)-1]
+                    let remainder = (length lst) - start 
+                    remlen <- [2..remainder]
+                    let prefix = drop start lst 
+                    let rest = take remlen prefix
+                    guard (sum rest == tgt)
+                    return rest
+
+key :: (Num a, Foldable t, Ord a) => t a -> a
+key lst = maximum lst + minimum lst
+
+day9 :: IO ()
 day9 = do 
         its <- readInts "inputs/inputd9.txt"
         print $ take 25 its 
-        let (num,idx) =  checklist (drop 25 its) (take 25 its) 25
+        let (num,_) =  checklist (drop 25 its) (take 25 its) 25
         print num 
-        let f = do 
-                    start <- [0..(length its)-1]
-                    let remainder = (length its) - start 
-                    remlen <- [2..remainder]
-                    let prefix = drop start its 
-                    let rest = take remlen prefix
-                    guard (sum rest == num)
-                    return (maximum rest + minimum rest) 
-        print f 
+        print $ map key $ setsum its num 
