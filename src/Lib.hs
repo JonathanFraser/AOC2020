@@ -8,7 +8,8 @@ module Lib
         day6,
         day7,
         day8,
-        day9
+        day9,
+        day10
     ) where
 
 import Control.Monad
@@ -547,8 +548,8 @@ checklist (x:_) _ i = (x,i)
 
 setsum :: (Eq a, Num a) => [a] -> a -> [[a]]
 setsum lst tgt = do 
-                    start <- [0..(length lst)-1]
-                    let remainder = (length lst) - start 
+                    start <- [0..length lst-1]
+                    let remainder = length lst - start 
                     remlen <- [2..remainder]
                     let prefix = drop start lst 
                     let rest = take remlen prefix
@@ -565,3 +566,32 @@ day9 = do
         let (num,_) =  checklist (drop 25 its) (take 25 its) 25
         print num 
         print $ map key $ setsum its num 
+
+
+
+attempt = [16,10,15,5,1,11,7,19,6,12,4]
+attempt2 = [28,33,18,42,31,14,46,20,48,47,24,23,49,45,19,38,39,11,1,32,25,35,8,17,7,9,4,2,34,10,3]
+
+permute 1 = 1 
+permute 2 = 2 
+permute 3 = 4 
+permute 4 = 7
+
+day10 = do 
+            jfile <- readInts "inputs/input10.txt"
+            --let jfile = attempt2
+            let jolts = List.sort jfile
+            let target = maximum jolts + 3
+            let jtotal = [0] ++ jolts ++ [target]
+            let (jf:jrest) = jtotal
+            let dist = map (uncurry (-)) $ zip jrest jtotal
+            --let dist = findlist jolts 0 target []
+            let diff3 = length $ filter (==3) dist 
+            let diff1 = length $ filter (==1) dist 
+            print dist
+            print diff1
+            print diff3
+            print (diff1*diff3)
+            let ns = map length $ filter (\x -> head x == 1) $ List.group dist
+            print $ product $ map permute ns  
+
