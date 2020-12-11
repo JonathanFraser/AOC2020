@@ -9,7 +9,8 @@ module Lib
         day7,
         day8,
         day9,
-        day10
+        day10,
+        day11
     ) where
 
 import Control.Monad
@@ -569,7 +570,9 @@ day9 = do
 
 
 
+attempt :: [Integer]
 attempt = [16,10,15,5,1,11,7,19,6,12,4]
+attempt2 :: [Integer]
 attempt2 = [28,33,18,42,31,14,46,20,48,47,24,23,49,45,19,38,39,11,1,32,25,35,8,17,7,9,4,2,34,10,3]
 
 permute 1 = 1 
@@ -577,15 +580,14 @@ permute 2 = 2
 permute 3 = 4 
 permute 4 = 7
 
+day10 :: IO ()
 day10 = do 
             jfile <- readInts "inputs/input10.txt"
             --let jfile = attempt2
             let jolts = List.sort jfile
             let target = maximum jolts + 3
             let jtotal = [0] ++ jolts ++ [target]
-            let (jf:jrest) = jtotal
-            let dist = map (uncurry (-)) $ zip jrest jtotal
-            --let dist = findlist jolts 0 target []
+            let dist =  zipWith (-) (tail jtotal) jtotal
             let diff3 = length $ filter (==3) dist 
             let diff1 = length $ filter (==1) dist 
             print dist
@@ -594,4 +596,119 @@ day10 = do
             print (diff1*diff3)
             let ns = map length $ filter (\x -> head x == 1) $ List.group dist
             print $ product $ map permute ns  
+
+data Seat = Occupied | Empty | Floor deriving (Show,Eq)
+
+
+readEmpty =  do
+                PC.char 'L' 
+                return Empty 
+readOccupied = do 
+                PC.char '#'
+                return Occupied 
+readFloor = do 
+                PC.char '.'
+                return Floor
+
+readElement = PT.choice $ map PT.try [readEmpty,readOccupied,readFloor]
+
+readLine = do 
+            elements <- PT.many readElement
+            PC.endOfLine
+            return $ Map.fromList $ zip [0..] elements
+
+readGrid = do 
+            lines <- PT.many readLine
+            let maps = map (\(l,m) -> Map.mapKeys (\x -> (l,x)) m) $ zip [0..] lines 
+            return $ Map.unions maps 
+
+increments :: [(Int,Int)]
+increments = [(1,0),(-1,0),(1,-1),(0,-1),(-1,-1),(1,1),(0,1),(-1,1)]
+
+getNeighbours :: Map.Map (Int,Int) Seat -> (Int,Int) -> [(Int,Int)]
+getNeighbours grid (x,y) = let 
+                                neighbours = map (\(f1,f2) -> (x+f1,y+f2)) increments
+                            in 
+                                filter (\x -> Map.member x grid) neighbours
+
+
+
+getNeighboursLinear:: Map.Map (Int,Int) Seat -> (Int,Int) -> [(Int,Int)]
+getNeighboursLinear  grid loc = let 
+                                    traceline (x0,y0) (f1,f2) = let 
+                                                            loc = (f1+x0,f2+y0)
+                                                            potentialPlace = Map.lookup loc grid
+                                                        in case potentialPlace of 
+                                                            Nothing -> []
+                                                            Just x -> case x of 
+                                                                        Floor -> traceline loc (f1,f2)
+                                                                        Occupied -> [loc]
+                                                                        Empty -> [loc]
+                                in 
+                                    concatMap (traceline loc) increments 
+                                        
+
+populateNeighbours :: (Map.Map (Int,Int) Seat -> (Int,Int) -> [(Int,Int)]) -> Map.Map (Int,Int) Seat -> Map.Map (Int,Int) [(Int,Int)]
+populateNeighbours f m = Map.mapWithKey (\loc _ -> f m loc) m 
+
+occupiedNeighbours :: Map.Map (Int,Int) Seat -> Map.Map (Int,Int) [(Int,Int)] -> (Int,Int) -> Int 
+occupiedNeighbours values neighbours loc = let 
+                                            res = do 
+                                                    r <- Map.lookup loc neighbours 
+                                                    return $ length $ filter (==Occupied) $ map (\x -> Map.findWithDefault Floor x values) r 
+                                            in 
+                                                case res of 
+                                                    Nothing -> 0 
+                                                    Just x -> x 
+
+
+part1Update :: Int -> Seat -> Seat
+part1Update _  Floor = Floor 
+part1Update n Empty | (n == 0) = Occupied
+part1Update _ Empty = Empty 
+part1Update n Occupied | (n >= 4) = Empty 
+part1Update _ Occupied = Occupied
+
+part2Update :: Int -> Seat -> Seat 
+part2Update _  Floor = Floor 
+part2Update n Empty | (n == 0) = Occupied
+part2Update _ Empty = Empty 
+part2Update n Occupied | (n >= 5) = Empty 
+part2Update _ Occupied = Occupied
+
+seatStep :: (Int -> Seat -> Seat) -> Map.Map (Int,Int) [(Int,Int)] -> Map.Map (Int,Int) Seat -> Map.Map (Int,Int) Seat 
+seatStep update neighbours start = Map.mapWithKey (\ key value -> update (occupiedNeighbours start neighbours key) value) start 
+
+converge :: (Eq a) => (a->a) -> a -> a  
+converge step first = let 
+                        next = step first
+                in 
+                    if next == first then 
+                        next 
+                    else 
+                        converge step next 
+
+countOccupied x = let 
+                    (_,values) = unzip $ Map.toList x
+                in 
+                    length $ filter (==Occupied) values
+
+day11 :: IO ()
+day11 = do 
+            file <- readFile "inputs/inputd11.txt"
+            let res = PT.parse readGrid "" file 
+            print $ do 
+                        r <- res 
+                        let simpleneighbours = populateNeighbours getNeighbours r 
+                        let simpleconverge = converge (seatStep part1Update simpleneighbours) r
+                        let simple =  countOccupied simpleconverge 
+                       
+                        return simple
+            print $ do 
+                        r <- res 
+                        let compneighbours = populateNeighbours getNeighboursLinear r 
+                        let st = Map.foldr Set.insert Set.empty $  Map.map length compneighbours 
+                        let compconverge = converge (seatStep part2Update compneighbours) r 
+                        let comp = countOccupied compconverge
+                        return comp
 
