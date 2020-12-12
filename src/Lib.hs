@@ -10,7 +10,8 @@ module Lib
         day8,
         day9,
         day10,
-        day11
+        day11,
+        day12
     ) where
 
 import Control.Monad
@@ -572,6 +573,7 @@ day9 = do
 
 attempt :: [Integer]
 attempt = [16,10,15,5,1,11,7,19,6,12,4]
+
 attempt2 :: [Integer]
 attempt2 = [28,33,18,42,31,14,46,20,48,47,24,23,49,45,19,38,39,11,1,32,25,35,8,17,7,9,4,2,34,10,3]
 
@@ -712,3 +714,83 @@ day11 = do
                         let comp = countOccupied compconverge
                         return comp
 
+data Ship = Ship (Int,Int) Int deriving (Show,Eq)
+
+data Waypoint = Waypoint (Int,Int) (Int,Int) deriving (Show,Eq)
+
+data NavInstruction = NORTH | SOUTH | EAST | WEST | FORWARD | LEFT | RIGHT deriving (Show,Eq)
+
+normalize :: (Ord p, Num p) => p -> p
+normalize angle | angle >= 360 = normalize (angle-360)
+normalize angle | angle < 0 = normalize (angle+360)
+normalize angle = angle 
+
+addangle :: (Ord p, Num p) => p -> p -> p
+addangle x y = normalize (x+y)
+
+
+shipmove :: Ship -> (NavInstruction, Int) -> Ship
+shipmove (Ship (x,y) a) (NORTH,d) = Ship (x,y+d) a 
+shipmove (Ship (x,y) a) (SOUTH,d) = Ship (x,y-d) a 
+shipmove (Ship (x,y) a) (EAST,d) = Ship (x+d,y) a 
+shipmove (Ship (x,y) a) (WEST,d) = Ship (x-d,y) a 
+shipmove (Ship (x,y) a) (LEFT,d) = Ship (x,y) (addangle d a)
+shipmove (Ship (x,y) a) (RIGHT,d) = Ship (x,y) (addangle a (-d))
+shipmove (Ship (x,y) 0) (FORWARD,d) = Ship (x+d,y) 0 
+shipmove (Ship (x,y) 90) (FORWARD,d) = Ship (x,y+d) 90 
+shipmove (Ship (x,y) 180) (FORWARD,d) = Ship (x-d,y) 180 
+shipmove (Ship (x,y) 270) (FORWARD,d) = Ship (x,y-d) 270
+
+
+waypointmove :: Waypoint -> (NavInstruction, Int) -> Waypoint
+waypointmove (Waypoint (x,y) (r,l)) (NORTH,d) = Waypoint (x,y) (r,l+d)
+waypointmove (Waypoint (x,y) (r,l)) (SOUTH,d) = Waypoint (x,y) (r,l-d)
+waypointmove (Waypoint (x,y) (r,l)) (EAST,d) = Waypoint (x,y) (r+d,l)
+waypointmove (Waypoint (x,y) (r,l)) (WEST,d) = Waypoint (x,y) (r-d,l)
+waypointmove (Waypoint (x,y) (r,l)) (LEFT,90) = Waypoint (x,y) (-l,r)
+waypointmove (Waypoint (x,y) (r,l)) (LEFT,270) = Waypoint (x,y) (l,-r)
+waypointmove (Waypoint (x,y) (r,l)) (LEFT,180) = Waypoint (x,y) (-r,-l)
+waypointmove (Waypoint (x,y) (r,l)) (RIGHT,90) = Waypoint (x,y) (l,-r)
+waypointmove (Waypoint (x,y) (r,l)) (RIGHT,180) = Waypoint (x,y) (-r,-l)
+waypointmove (Waypoint (x,y) (r,l)) (RIGHT,270) = Waypoint (x,y) (-l,r)
+waypointmove (Waypoint (x,y) (r,l)) (FORWARD,n) = Waypoint (x+n*r,y+n*l) (r,l)
+
+shipstart :: Ship
+shipstart = Ship (0,0) 0
+
+waypointstart :: Waypoint
+waypointstart = Waypoint (0,0) (10,1)
+
+options :: [(Char, NavInstruction)]
+options = [('N',NORTH),('S',SOUTH),('E',EAST),('W',WEST),('L',LEFT),('R',RIGHT),('F',FORWARD)]
+
+day12parser :: (Integral b, Read b) => (Char, a) -> PT.ParsecT [Char] u Identity (a, b)
+day12parser (l,t) = do 
+            PC.char l 
+            n <- PN.parseIntegral
+            PT.endOfLine
+            return (t,n)
+
+day12fileparse :: PT.ParsecT [Char] u Identity [(NavInstruction, Int)]
+day12fileparse = PT.many $ PT.choice $ map (PT.try.day12parser) options 
+
+testd12 :: [(NavInstruction, Integer)]
+testd12 = [(FORWARD,10),(NORTH,3),(FORWARD,7),(RIGHT,90),(FORWARD,11)]
+
+runship :: Foldable t => t (NavInstruction, Int) -> Ship
+runship seq = foldl shipmove shipstart seq
+
+shipmanhat :: Ship -> Int
+shipmanhat (Ship (x,y) _) = abs x + abs y 
+waymanhat :: Waypoint -> Int
+waymanhat (Waypoint (x,y) _) = abs x + abs y 
+
+runwaypoint :: Foldable t => t (NavInstruction, Int) -> Waypoint
+runwaypoint seq= foldl waypointmove waypointstart seq 
+
+day12=do 
+        f <- readFile "inputs/inputd12.txt"
+        let r = PT.parse day12fileparse "" f 
+        print $ do 
+                    l <- r
+                    return (shipmanhat $ runship l,waymanhat $ runwaypoint l)
