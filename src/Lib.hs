@@ -11,7 +11,8 @@ module Lib
         day9,
         day10,
         day11,
-        day12
+        day12,
+        day13
     ) where
 
 import Control.Monad
@@ -781,7 +782,8 @@ runship :: Foldable t => t (NavInstruction, Int) -> Ship
 runship seq = foldl shipmove shipstart seq
 
 shipmanhat :: Ship -> Int
-shipmanhat (Ship (x,y) _) = abs x + abs y 
+shipmanhat (Ship (x,y) _) = abs x + abs y
+ 
 waymanhat :: Waypoint -> Int
 waymanhat (Waypoint (x,y) _) = abs x + abs y 
 
@@ -794,3 +796,46 @@ day12=do
         print $ do 
                     l <- r
                     return (shipmanhat $ runship l,waymanhat $ runwaypoint l)
+
+parseBusBlank = do 
+                PC.char 'x'
+                return Nothing 
+
+parseBusID = do 
+                n<- PN.parseIntegral
+                return $ Just n 
+parsebus = do 
+            time <- PN.parseIntegral
+            PC.endOfLine
+            lst <- PT.sepBy (PT.choice $ map PT.try [parseBusBlank,parseBusID]) (PC.char ',')
+            return (time,lst)
+
+
+crt :: (Integral a, Foldable t) => t (a, a) -> (a, a)
+crt = foldr go (0, 1)
+    where
+    go (r1, m1) (r2, m2) = (r `mod` m, m)
+        where
+        r = r2 + m2 * (r1 - r2) * (m2 `inv` m1)
+        m = m2 * m1
+
+    -- Modular Inverse
+    a `inv` m = let (_, i, _) = gcd a m in i `mod` m
+
+    -- Extended Euclidean Algorithm
+    gcd 0 b = (b, 0, 1)
+    gcd a b = (g, t - (b `div` a) * s, s)
+        where (g, s, t) = gcd (b `mod` a) a
+
+
+day13 = do 
+        l <- readFile "inputs/inputd13.txt"
+        let res = PT.parse parsebus "" l 
+        print $ do 
+                    (t,lst) <- res
+                    let lsttest = mapMaybe id lst 
+                    let times = List.sortOn snd $ map (\x -> (x,x - mod t x)) lsttest
+                    let (r1,r2) = head times 
+                    let keys = mapMaybe (\(i,v)-> fmap (\x -> (x-i,x)) v) $ zip [0..] lst
+                    let resultPart2 = crt keys 
+                    return (r1*r2,fst resultPart2)  
