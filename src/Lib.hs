@@ -12,7 +12,8 @@ module Lib
         day10,
         day11,
         day12,
-        day13
+        day13,
+        day14
     ) where
 
 import Control.Monad
@@ -21,6 +22,7 @@ import Data.Maybe
 import Data.Either
 import Data.List 
 import qualified Data.Array as Array 
+import qualified Data.Bits as Bits 
 import qualified Data.Set as Set 
 import qualified Data.List as List 
 import qualified Text.Parsec.Numbers as PN 
@@ -839,3 +841,90 @@ day13 = do
                     let keys = mapMaybe (\(i,v)-> fmap (\x -> (x-i,x)) v) $ zip [0..] lst
                     let resultPart2 = crt keys 
                     return (r1*r2,fst resultPart2)  
+
+
+data InitInstruction = Assignment Int Int | Mask String deriving (Show,Eq)
+
+parseMask = do 
+    PC.string "mask"
+    PC.space 
+    PC.char '='
+    PC.space 
+    msk <- PT.many $ PT.choice $ map (PT.try.PC.char) ['X','0','1']
+    return $ Mask msk
+
+
+parseAssignment = do 
+        PC.string "mem"
+        PC.char '['
+        to <- PN.parseIntegral
+        PC.char ']'
+        PC.space 
+        PC.char '='
+        PC.space 
+        value <- PN.parseIntegral
+        return $ Assignment to value
+
+parseDay14Line = do 
+            inst <-  PT.choice $ map PT.try [parseMask,parseAssignment]
+            PT.endOfLine
+            return inst
+
+parseDay14File = PT.many parseDay14Line
+
+parseMaskV1 msk = let 
+                    flipmsk = List.reverse msk
+                    pwrs2 = map (\x -> 2^x) [0..]
+                    position = zip flipmsk pwrs2
+                    setters = map snd $ filter (\x -> fst x == '1') position
+                    clearers = map snd $ filter (\x -> fst x == '0') position
+                    in 
+                        ((sum setters),(Bits.complement $ sum clearers))
+
+parseMaskV2 msk = let 
+                    flipmsk = List.reverse msk
+                    pwrs2 = map (\x -> 2^x) [0..]
+                    position = zip flipmsk pwrs2
+                    setters = map snd $ filter (\x -> fst x == '1') position
+                    options = map snd $ filter (\x -> fst x == 'X' ) position
+                    in 
+                        (sum setters,Bits.complement $ sum options,options)
+
+applyMask :: Int -> Int -> Int -> Int 
+applyMask ormask andmask value = (value Bits..&. andmask) Bits..|. ormask  
+
+data Day14Machine = Day14Machine {andmask :: Int, ormask :: Int,alternations::[Int], memory :: Map.Map Int Int}
+
+
+initMachine = Day14Machine {andmask = Bits.complement 0,ormask = 0,alternations=[], memory = Map.empty}
+
+
+runMachine machine instruction = case instruction of 
+                                     Mask str -> let 
+                                                    (set,clr) = parseMaskV1 str 
+                                                    in machine { andmask = clr , ormask = set}
+                                     Assignment to value ->  machine {memory = Map.insert to (applyMask (ormask machine) (andmask machine) value) $ memory machine}
+
+
+
+runMachine2 machine instruction = case instruction of 
+                                     Mask str -> let 
+                                                    (or,and,alter) = parseMaskV2 str  
+                                                in machine {ormask = or, andmask = and, alternations = alter}
+                                     Assignment to value ->  machine {memory = setoptions value (applyMask (ormask machine) (andmask machine) to) (alternations machine) (memory machine)}
+
+setoptions::Int -> Int -> [Int] -> Map.Map Int Int -> Map.Map Int Int 
+setoptions value address [] memory = Map.insert address value memory 
+setoptions value address (x:xs) memory = setoptions value (address+x) xs $ setoptions value address xs memory 
+
+sumMemory machine = sum $ map snd $ Map.toList $ memory machine
+
+day14 :: IO ()
+day14 = do 
+        f <- readFile "inputs/inputd14.txt"
+        let instrs = PT.parse parseDay14File "" f 
+        print $ do 
+                    l <- instrs 
+                    let endstate = foldl runMachine initMachine l
+                    let endstate2 = foldl runMachine2 initMachine l
+                    return (sumMemory endstate,sumMemory endstate2)
