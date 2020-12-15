@@ -13,7 +13,8 @@ module Lib
         day11,
         day12,
         day13,
-        day14
+        day14,
+        day15
     ) where
 
 import Control.Monad
@@ -853,7 +854,6 @@ parseMask = do
     msk <- PT.many $ PT.choice $ map (PT.try.PC.char) ['X','0','1']
     return $ Mask msk
 
-
 parseAssignment = do 
         PC.string "mem"
         PC.char '['
@@ -862,8 +862,7 @@ parseAssignment = do
         PC.space 
         PC.char '='
         PC.space 
-        value <- PN.parseIntegral
-        return $ Assignment to value
+        Assignment to <$> PN.parseIntegral
 
 parseDay14Line = do 
             inst <-  PT.choice $ map PT.try [parseMask,parseAssignment]
@@ -872,18 +871,18 @@ parseDay14Line = do
 
 parseDay14File = PT.many parseDay14Line
 
+pwrs2 = map (2 ^) [0..]
+
 parseMaskV1 msk = let 
                     flipmsk = List.reverse msk
-                    pwrs2 = map (\x -> 2^x) [0..]
                     position = zip flipmsk pwrs2
                     setters = map snd $ filter (\x -> fst x == '1') position
                     clearers = map snd $ filter (\x -> fst x == '0') position
                     in 
-                        ((sum setters),(Bits.complement $ sum clearers))
+                        (sum setters,Bits.complement $ sum clearers)
 
 parseMaskV2 msk = let 
                     flipmsk = List.reverse msk
-                    pwrs2 = map (\x -> 2^x) [0..]
                     position = zip flipmsk pwrs2
                     setters = map snd $ filter (\x -> fst x == '1') position
                     options = map snd $ filter (\x -> fst x == 'X' ) position
@@ -895,17 +894,13 @@ applyMask ormask andmask value = (value Bits..&. andmask) Bits..|. ormask
 
 data Day14Machine = Day14Machine {andmask :: Int, ormask :: Int,alternations::[Int], memory :: Map.Map Int Int}
 
-
 initMachine = Day14Machine {andmask = Bits.complement 0,ormask = 0,alternations=[], memory = Map.empty}
-
 
 runMachine machine instruction = case instruction of 
                                      Mask str -> let 
                                                     (set,clr) = parseMaskV1 str 
                                                     in machine { andmask = clr , ormask = set}
                                      Assignment to value ->  machine {memory = Map.insert to (applyMask (ormask machine) (andmask machine) value) $ memory machine}
-
-
 
 runMachine2 machine instruction = case instruction of 
                                      Mask str -> let 
@@ -928,3 +923,30 @@ day14 = do
                     let endstate = foldl runMachine initMachine l
                     let endstate2 = foldl runMachine2 initMachine l
                     return (sumMemory endstate,sumMemory endstate2)
+day15input = [9,12,1,4,17,0,18]
+day15test= [0,3,6]
+
+advance (previous,lookup,l) = let 
+                            newdict = Map.insert previous l lookup
+                          in 
+                              case Map.lookup previous lookup of 
+                                  Nothing -> (0,newdict,l+1)
+                                  Just x -> ((l-x),newdict,l+1)
+                                  
+
+
+
+seedday15 lst = let 
+                    seq = List.reverse lst 
+                in 
+                    (head seq,Map.fromList $ zip (init lst) [1..],length seq)
+
+step2nth entry n = grabnth (seedday15 entry) n
+
+
+grabnth (prev,_,l) n | l == n = prev
+grabnth state n = grabnth (advance state) n
+
+day15 = do 
+            print $ step2nth day15input 2020
+            print $ step2nth day15input 30000000
