@@ -14,7 +14,8 @@ module Lib
         day12,
         day13,
         day14,
-        day15
+        day15,
+        day16
     ) where
 
 import Control.Monad
@@ -22,6 +23,7 @@ import Data.Functor.Identity
 import Data.Maybe
 import Data.Either
 import Data.List 
+
 import qualified Data.Array as Array 
 import qualified Data.Bits as Bits 
 import qualified Data.Set as Set 
@@ -931,7 +933,7 @@ advance (previous,lookup,l) = let
                           in 
                               case Map.lookup previous lookup of 
                                   Nothing -> (0,newdict,l+1)
-                                  Just x -> ((l-x),newdict,l+1)
+                                  Just x -> (l-x,newdict,l+1)
                                   
 
 
@@ -950,3 +952,112 @@ grabnth state n = grabnth (advance state) n
 day15 = do 
             print $ step2nth day15input 2020
             print $ step2nth day15input 30000000
+
+parseRange = do 
+                r1 <- PN.parseIntegral
+                PC.char '-'
+                r2 <- PN.parseIntegral 
+                return (r1,r2)
+
+parseticketField = do 
+                key <- PT.many $ PT.choice $ map PT.try [PC.letter,PC.space]
+                PC.char ':'
+                PC.space 
+                r1 <- parseRange 
+                PC.string " or "
+                r2 <- parseRange
+                PT.endOfLine 
+                return $ Map.singleton key (r1,r2)
+
+parseConstraints = do 
+                    constraints <- PT.many $ PT.try parseticketField
+                    PC.endOfLine
+                    return $ Map.unions constraints 
+
+parseTicket = do 
+                lst <- PT.sepBy PN.parseIntegral (PC.char ',') 
+                PT.endOfLine 
+                return lst
+
+parseMyTicket = do 
+                    PC.string "your ticket:"
+                    PC.endOfLine 
+                    t<-parseTicket
+                    PC.endOfLine 
+                    return t 
+parseOtherTickets = do  
+                    PC.string "nearby tickets:"
+                    PC.endOfLine 
+                    PT.many parseTicket 
+
+
+type Range = (Integer,Integer)
+type Ticket = [Integer]
+
+parseDay16File :: PT.ParsecT [Char] u Identity (Map.Map String (Range,Range), Ticket,[Ticket])
+parseDay16File = do 
+                    c<-parseConstraints 
+                    mt <- parseMyTicket
+                    ot <- parseOtherTickets
+                    return (c,mt,ot)
+
+constraint :: Ord r => (r,r) -> r -> Bool 
+constraint (r1,r2) r = r <= r2 && r >= r1 
+
+constraints (r1,r2) r = constraint r1 r || constraint r2 r 
+
+filterMap :: Map.Map String (Range,Range) -> Map.Map String (Integer -> Bool)
+filterMap dict = Map.map constraints dict 
+
+validValue :: Map.Map String (Integer->Bool) -> Integer -> Bool 
+validValue dict = let 
+                        (_,cs) = unzip $ Map.toList dict
+                    in foldl (\f1 f2 -> \x -> (f1 x) || (f2 x) ) (\x -> False) cs
+
+scanCode :: Map.Map String (Integer->Bool) -> Ticket -> Integer
+scanCode filter ticket = sum $ List.filter (\x -> not $ validValue filter x) ticket
+
+solvedday16Part1 :: (Map.Map String (Range, Range), Ticket, [Ticket]) -> Integer
+solvedday16Part1 (c,m,nt) = sum $ map (scanCode (filterMap c)) nt
+
+
+keys = ["departure location","departure station","departure platform","departure track","departure date","departure time"]
+
+fieldOptions :: Map.Map String (Integer -> Bool) -> [Integer] -> [String]
+fieldOptions filterset lst = let
+                            adjust x = foldl (\r y -> r && x y) True lst
+                            in map fst $ List.filter (\(x,y) -> adjust y) $ Map.toList filterset
+
+solved :: [[String]] ->  Map.Map String Integer -> (Map.Map String Integer,[[String]])
+solved [] a = (a,[]) 
+solved lst a = let 
+                    lengths = map length lst
+                    pos = List.elemIndex 1 lengths
+                in 
+                    case pos of 
+                        Nothing -> (a,lst)
+                        Just i -> let 
+                                    fix = lst !! i
+                                    key = head fix 
+                                    rem = map (List.delete key) lst
+                                    updated = Map.insert key (toInteger i) a 
+                                    in 
+                                        solved rem updated
+
+solvedday16Part2 (c,m,nt) = let 
+                                filters = filterMap c 
+                                remtickets = List.filter (\x -> 0 == scanCode filters x) nt 
+                                cols = List.transpose remtickets
+                                options = map (fieldOptions filters) cols 
+                                (orders,remainder) = solved options Map.empty
+                                solveset = Map.fromList $ zip  keys [0..]
+                                solutionkeys = Map.intersection orders solveset
+                                (_,ticketlocs) = unzip $ Map.toList solutionkeys
+                            in  product $ map (\x -> m !! (fromIntegral x)) ticketlocs 
+
+day16 = do 
+            f <- readFile "inputs/inputd16.txt"
+            let r = PT.parse parseDay16File "" f
+            print $ do 
+                        l <- r 
+                        return $ (solvedday16Part1 l,solvedday16Part2 l)
