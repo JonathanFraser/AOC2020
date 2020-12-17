@@ -15,7 +15,8 @@ module Lib
         day13,
         day14,
         day15,
-        day16
+        day16,
+        day17
     ) where
 
 import Control.Monad
@@ -1061,3 +1062,76 @@ day16 = do
             print $ do 
                         l <- r 
                         return $ (solvedday16Part1 l,solvedday16Part2 l)
+
+type PocketLocation = (Integer,Integer,Integer)
+type PocketDimension = Set.Set PocketLocation 
+
+parseCellDay17 = do 
+                    cell <- PT.choice $ map PT.try [PC.char '.',PC.char '#']
+                    return (cell == '#')
+
+parseLineDay17 = do 
+                    manyCells <- PT.many parseCellDay17
+                    PC.endOfLine
+                    return  $ map snd (filter fst $ zip manyCells ([0..]::[Integer]))
+
+parseDay17 :: PT.ParsecT String u Identity (Set.Set (Integer, Integer, Integer))
+parseDay17 = do 
+                actives <- PT.many parseLineDay17
+                return $ Set.fromList $ do 
+                                            (row,i) <- zip actives ([0..]::[Integer])
+                                            map (\x -> (0,i,x)) row 
+               
+getNeighbours3d :: PocketLocation -> [PocketLocation]
+getNeighbours3d (x,y,z) = do 
+                            x' <- [-1,0,1]
+                            y' <- [-1,0,1]
+                            z' <- [-1,0,1]
+                            guard ((x',y',z') /= (0,0,0))
+                            return (x+x',y+y',z+z')
+
+getNeighbours4d (x,y,z,w) = do 
+                            x' <- [-1,0,1]
+                            y' <- [-1,0,1]
+                            z' <- [-1,0,1]
+                            w' <- [-1,0,1]
+                            guard ((x',y',z',w') /= (0,0,0,0))
+                            return (x+x',y+y',z+z',w+w')
+
+day17rule n True | n==2 || n==3 = True 
+day17rule n True = False
+day17rule n False | n == 3 = True 
+day17rule n state = state 
+
+
+day17Step :: Ord a => (a->[a]) -> Set.Set a -> Set.Set a 
+day17Step neighbours state = let 
+                    currentActive = Set.toList state
+                    potentialActive = currentActive >>= neighbours  
+                    res = do 
+                            candidate <- potentialActive
+                            let currentState = Set.member candidate state
+                            let numNeighbours = length $ filter (\x-> Set.member x state) $ neighbours candidate
+                            if day17rule numNeighbours currentState then 
+                                return candidate 
+                            else 
+                                []
+                in Set.fromList res 
+
+
+teststate = [(0,0,1),(0,1,2),(0,2,0),(0,2,1),(0,2,2)]
+
+to4d (x,y,z) = (0,x,y,z)
+
+toHyper state = Set.fromList $ map to4d $ Set.toList state 
+
+day17 = do 
+            f <- readFile "inputs/inputd17.txt"
+            let r = PT.parse parseDay17 "" f 
+            
+            print $ do 
+                        l <- r
+                        let progress3d = iterate (day17Step getNeighbours3d) l
+                        let result x = head $ List.drop 6 $ map Set.size x
+                        let progress4d = iterate (day17Step getNeighbours4d) $ toHyper l 
+                        return (result progress3d,result progress4d)
