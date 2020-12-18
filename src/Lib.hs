@@ -16,7 +16,8 @@ module Lib
         day14,
         day15,
         day16,
-        day17
+        day17,
+        day18
     ) where
 
 import Control.Monad
@@ -1135,3 +1136,80 @@ day17 = do
                         let result x = head $ List.drop 6 $ map Set.size x
                         let progress4d = iterate (day17Step getNeighbours4d) $ toHyper l 
                         return (result progress3d,result progress4d)
+
+
+data Op = Add | Mul deriving (Show,Eq)
+data Expression  = Value Integer | Bracket Expression | Operations [Op] [Expression] deriving (Show,Eq)
+
+
+compute Add x y = x + y 
+compute Mul x y = x * y
+
+lhprecedence (Value a) = a 
+lhprecedence (Bracket e) = lhprecedence e 
+lhprecedence (Operations [] (x:[])) = lhprecedence x 
+lhprecedence (Operations (x:rest) (a:b:restval)) = let 
+                                                    left = lhprecedence a 
+                                                    right = lhprecedence b 
+                                                    new = compute x left right 
+                                                    in 
+                                                        lhprecedence (Operations rest ((Value new):restval))
+
+
+reduceAdd (Value a) = Value a 
+reduceAdd (Bracket e) = Bracket (reduceAdd e)
+reduceAdd (Operations (Add:[]) vals) = Operations (Add:[]) $ map reduceAdd vals
+reduceAdd (Operations (Mul:[]) vals) = Operations (Mul:[]) $ map reduceAdd vals 
+reduceAdd (Operations ops values) = let
+                                        reduced = map reduceAdd values
+                                        addloc = List.elemIndex Add ops 
+                                    in 
+                                        case addloc of
+                                            Nothing -> (Operations ops reduced) -- There are no add operations
+                                            Just loc -> let
+                                                            (opl,opr) = List.splitAt loc ops
+                                                            (op:oprest) = opr 
+                                                            (vall,l:r:valrrest) = List.splitAt loc reduced
+                                                        in 
+                                                            reduceAdd $ Operations (opl++oprest) (vall++[Operations [Add] (l:r:[])]++valrrest)
+
+
+
+tests = [
+        "1 + 2 * 3 + 4 * 5 + 6",
+        "1 + (2 * 3) + (4 * (5 + 6))",
+        "2 * 3 + (4 * 5)",
+        "5 + (8 * 3 + 9 + 3 * 4 * 3)",
+        "5 * 9 * (7 * 3 * 3 + 9 * 3 + (8 + 6 * 4))",
+        "((2 + 4 * 9) * (6 + 9 * 8 + 6) + 6) + 2 + 4 * 2"]
+
+testresults=[71,51,26,437,12240,13632]
+
+parseMultiply = PT.string " * " >>= (\_ -> return Mul)
+parseAdd = PT.string " + " >>=(\_ -> return Add)
+parseOperator = PT.choice [PT.try parseMultiply, PT.try parseAdd]
+
+parseValue = fmap Value PN.parseIntegral
+parseBracketedExpression = fmap Bracket $ PT.between (PC.char '(') (PC.char ')') parseExpression
+parseEquationValue = PT.choice [PT.try parseBracketedExpression,parseValue]
+
+parseExpression = do 
+                    eq <- parseEquationValue
+                    opm <- PT.optionMaybe parseOperator 
+                    case opm of 
+                        Nothing -> return eq 
+                        Just op -> do 
+                                    rest <- parseExpression
+                                    return $ case rest of 
+                                                Value x -> Operations [op] [eq,Value x]
+                                                Operations ops eqs -> Operations (op:ops) (eq:eqs)
+                                                Bracket exp -> Operations [op] (eq:Bracket exp:[])
+
+
+
+day18 = do 
+            f <- lines <$> readFile "inputs/inputd18.txt"
+            let values = map (PT.parse parseExpression "") f
+            let ([],results) = partitionEithers values
+            print $ sum $ map lhprecedence results 
+            print $ sum $ map (lhprecedence.reduceAdd) results
