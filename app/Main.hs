@@ -3,4 +3,4 @@ module Main where
 import Lib
 
 main :: IO ()
-main = day18
+main = day19

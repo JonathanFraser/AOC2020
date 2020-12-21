@@ -17,7 +17,8 @@ module Lib
         day15,
         day16,
         day17,
-        day18
+        day18,
+        day19
     ) where
 
 import Control.Monad
@@ -1213,3 +1214,70 @@ day18 = do
             let ([],results) = partitionEithers values
             print $ sum $ map lhprecedence results 
             print $ sum $ map (lhprecedence.reduceAdd) results
+
+
+data Rule = Fixed String | SubRules [[Integer]] deriving (Show,Eq)
+
+
+failingParser n = do fail ("could not lookup rule "++(show n))
+
+
+parseRuleList = PT.sepEndBy1 PN.parseIntegral (PC.char ' ')
+
+parseBranchRule = do 
+                    l <- PT.sepBy1 parseRuleList (PC.string "| ")
+                    PT.endOfLine
+                    return $ SubRules l
+
+parseStaticRule = do 
+                list <- PT.between (PT.char '\"') (PT.char '\"') (PT.many1 PC.letter)
+                PC.endOfLine
+                return (Fixed list)
+
+parseRule = do 
+            rulenumber <- PN.parseIntegral
+            PC.char ':'
+            PC.char ' ' 
+            rule <- PT.choice [parseStaticRule,parseBranchRule]
+            return (rulenumber,rule)
+
+parseRuleTable = fmap Map.fromList $ PT.many parseRule 
+
+parseString = do 
+                l <- PT.many PC.letter 
+                PT.endOfLine
+                return l 
+
+parseFullFile = do 
+                rules <- parseRuleTable 
+                PT.endOfLine
+                lines <- PT.many parseString 
+                return (rules,lines)
+
+constructAndList table (xs) = let 
+                                andlist = map (\x -> fromMaybe (failingParser x) $ fmap (constructSubParser table) $ Map.lookup x table) xs 
+                                in fmap (concat) $ sequence andlist 
+
+constructSubParser :: Map.Map Integer Rule -> Rule -> PT.ParsecT String a Identity String 
+constructSubParser table (Fixed str) = PC.string str
+constructSubParser table (SubRules xs) = PT.choice $ map (PT.try . constructAndList table) xs
+
+
+day19 = do 
+            f <- readFile "inputs/inputd19.txt"
+            let parsed = PT.parse parseFullFile "" f 
+            (parsetree,lines) <- case parsed of 
+                        Left x -> fail (show x) 
+                        Right x -> return x 
+            parser <- do 
+                        value <- case Map.lookup 0 parsetree of
+                                        Nothing -> fail "could not find 0 parser"
+                                        Just x -> return x 
+                        return $ do 
+                            p <- constructSubParser parsetree value 
+                            PT.eof
+                            return p
+
+            let (lefts,rights) = partitionEithers $ map (PT.parse parser "") lines 
+            print $ length lefts 
+            print $ length rights 
