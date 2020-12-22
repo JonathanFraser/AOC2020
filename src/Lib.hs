@@ -18,7 +18,8 @@ module Lib
         day16,
         day17,
         day18,
-        day19
+        day19,
+        day20
     ) where
 
 import Control.Monad
@@ -1307,3 +1308,31 @@ day19 = do
                                 guard (length l > length r) 
                                 return ((concat l)++(concat r))
             print $ countSuccess (complete parser0') lines 
+
+parseTile = let 
+                parseCell :: Int -> Int -> PT.ParsecT String a Identity ((Int,Int),Bool)
+                parseCell y x = do 
+                                    c <- PT.choice $ map PC.char ['.','#']
+                                    return ((x,y),(c=='.'))
+
+                parseLine y = do 
+                                c <- mapM (parseCell y) [0..9]
+                                PT.endOfLine 
+                                return c 
+                parseGrid = fmap concat $ mapM parseLine [0..9]
+                parseTile = do  
+                                PC.string "Tile "
+                                n <- PN.parseIntegral
+                                PC.string ":\n"
+                                i <- parseGrid
+                                return (n,Map.fromList i)
+            in PT.many $ do 
+                            i<-parseTile 
+                            PT.endOfLine
+                            return i 
+
+day20 = do 
+            f <- readFile "inputs/inputd20.txt"
+            t <- failEither $ PT.parse parseTile "" f 
+            print $ length t 
+            
