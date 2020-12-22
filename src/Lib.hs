@@ -1219,9 +1219,6 @@ day18 = do
 data Rule = Fixed String | SubRules [[Integer]] deriving (Show,Eq)
 
 
-
-
-
 parseRuleList = PT.sepEndBy1 PN.parseIntegral (PC.char ' ')
 
 parseBranchRule = do 
@@ -1257,11 +1254,12 @@ parseFullFile = do
 type Day19Parser a = PT.ParsecT String a Identity String 
 
 constructAndList :: (Integer -> Day19Parser a) -> [Integer] -> PT.ParsecT String a Identity String 
-constructAndList lookup xs = fmap (concat) $ mapM lookup xs 
+constructAndList lookup xs = PT.try $ fmap (concat) $ mapM lookup xs 
 
 constructSubParser :: (Integer -> Day19Parser a) -> Rule -> PT.ParsecT String a Identity String 
 constructSubParser lookup (Fixed str) = PC.string str
-constructSubParser lookup (SubRules xs) = PT.choice $ map (PT.try . constructAndList lookup) xs
+constructSubParser lookup (SubRules (x:[])) = constructAndList lookup x
+constructSubParser lookup (SubRules xs) = PT.choice $ map (constructAndList lookup) xs
 
 failingParser n = fail ("could not lookup rule "++(show n))
 
@@ -1271,30 +1269,41 @@ day19lookup lookup k = Map.findWithDefault (failingParser k) k lookup
 complete :: Day19Parser a -> Day19Parser a 
 complete x = do l <- x; PT.eof; return l 
 
+fix :: (t->t) -> t 
+fix f = let x = f x in x 
+
 constructParseMap :: Map.Map Integer Rule -> Map.Map Integer (Day19Parser a)
 constructParseMap rulelist = let 
-                                parsermap = Map.map (constructSubParser (day19lookup parsermap)) rulelist
-                                in parsermap 
+                                go x = Map.map (constructSubParser (day19lookup x)) rulelist
+                                in fix go  
 
-getZeroParser :: (MonadFail m) => Map.Map Integer Rule -> m (Day19Parser a)
-getZeroParser table = case Map.lookup 0 (constructParseMap table) of 
-                            Nothing -> fail "could not find 0 parser"
-                            Just x -> return $ complete x  
+
+failLookup :: (Ord k,Show k,MonadFail m) => k -> Map.Map k a -> m a 
+failLookup key map = case Map.lookup key map of 
+                        Nothing -> fail ("could not find key "++(show key))
+                        Just x -> return x 
+
 
 countSuccess :: Day19Parser () -> [String] -> Int 
 countSuccess parser lines = let 
                                 (_,successes) = partitionEithers $ map (PT.parse parser "") lines 
                             in length successes 
+
+failEither :: (MonadFail m,Show a) => Either a b -> m b
+failEither p = case p of 
+                Left x -> fail (show x)
+                Right x -> return x 
 day19 = do 
             f <- readFile "inputs/inputd19.txt"
-            let parsed = PT.parse parseFullFile "" f 
-            (parsetree,lines) <- case parsed of 
-                        Left x -> fail (show x) 
-                        Right x -> return x 
-
-            parser <- getZeroParser parsetree 
-
-            print $ countSuccess parser lines 
-            let modtree = Map.insert 8 (SubRules [[42],[42,8]]) $ Map.insert 11 (SubRules [[42,31],[42,11,31]]) parsetree
-            modparser <- getZeroParser modtree
-            print $ countSuccess modparser lines 
+            (parsetree,lines) <- failEither $ PT.parse parseFullFile "" f 
+            let parserMap = constructParseMap parsetree
+            parser <- failLookup 0 parserMap 
+            print $ countSuccess (complete parser) lines 
+            parser42 <- failLookup 42 parserMap 
+            parser31 <- failLookup 31 parserMap 
+            let parser0' = do 
+                                l <- PT.many1 parser42
+                                r <- PT.many1 parser31 
+                                guard (length l > length r) 
+                                return ((concat l)++(concat r))
+            print $ countSuccess (complete parser0') lines 
