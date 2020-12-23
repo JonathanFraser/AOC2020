@@ -1352,19 +1352,21 @@ genImageKeys (n,i) = let
                     in (n,k)
                             
 
-count :: (Ord a) => [a] -> Map.Map a Integer
-count x = let 
-                f Nothing = Just 1 
-                f (Just x) = Just (x+1)
-            in 
-                foldl (flip $ Map.alter f) Map.empty x
+keymap :: Map.Map Integer [(Integer,Integer)] -> Map.Map (Integer,Integer) [Integer]
+keymap x = let 
+                go x Nothing = Just [x] 
+                go x (Just y) = Just (x:y)
 
+                grow x (grid,keys) = foldl (\ b a  -> Map.alter (go grid) a b ) x keys 
+            in 
+                foldl grow Map.empty $ Map.toList x 
 
 day20 = do 
             f <- readFile "inputs/inputd20.txt"
             t <- failEither $ PT.parse parseTile "" f 
             let image = map genImageKeys t 
-            let keycount = count $ concatMap snd image
+            let connectivity = keymap $ Map.fromList image
+            let keycount = Map.map length connectivity
             let singles = Map.filter (==1) keycount
             let doubles = Map.filter (==2) keycount 
             let x = map (\(n,keys) -> (n,length $ filter (\x -> Map.member x singles) keys)) image
