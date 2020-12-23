@@ -1331,8 +1331,44 @@ parseTile = let
                             PT.endOfLine
                             return i 
 
+
+genFwdKey :: [Bool] -> Integer
+genFwdKey x = foldl (\b (_,j) -> b + 2^j ) 0 $ filter fst $ zip x [0..]
+
+genFullKey :: [Bool] -> (Integer,Integer)
+genFullKey x = let 
+                k1 = genFwdKey x 
+                k2 = genFwdKey $ reverse x
+                in (k1*k2,k1+k2) 
+
+genImageKeys :: (Num a1, Enum a1, Ord a1) => (a2, Map.Map (a1, a1) Bool) -> (a2, [(Integer, Integer)])
+genImageKeys (n,i) = let 
+                        l = [0..9]
+                        sides = [\x->(0,x),\x->(9,x),\x->(x,0),\x->(x,9)]
+                        reduced = Map.filter id i 
+                        k = do 
+                                s <- sides 
+                                return $ genFullKey $ map (\x -> Map.member (s x) reduced)  l
+                    in (n,k)
+                            
+
+count :: (Ord a) => [a] -> Map.Map a Integer
+count x = let 
+                f Nothing = Just 1 
+                f (Just x) = Just (x+1)
+            in 
+                foldl (flip $ Map.alter f) Map.empty x
+
+
 day20 = do 
             f <- readFile "inputs/inputd20.txt"
             t <- failEither $ PT.parse parseTile "" f 
-            print $ length t 
-            
+            let image = map genImageKeys t 
+            let keycount = count $ concatMap snd image
+            let singles = Map.filter (==1) keycount
+            let doubles = Map.filter (==2) keycount 
+            let x = map (\(n,keys) -> (n,length $ filter (\x -> Map.member x singles) keys)) image
+            let corners = filter (\x -> 2 == snd x) x 
+            let edges = filter (\x -> 1 == snd x) x 
+            print $ product $ map fst corners 
+            print $ map fst edges 
